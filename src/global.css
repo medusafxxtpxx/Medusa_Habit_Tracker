@@ -1,0 +1,335 @@
+/* src/global.css */
+/* Shared design system. Dark always, no light mode, no exceptions. */
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&family=Cinzel:wght@400;500&display=swap');
+
+/* ─── CSS variables (default "rose"; palettes.js overrides the color ones) ─── */
+
+:root {
+  --bg:           #170d12;
+  --bg-card:      #241620;
+  --bg-input:     #1d1219;
+  --bg-deep:      #120a0e;
+  --border:       #3d2430;
+  --border-hover: #f78fb3;
+  --accent:       #f78fb3;
+  --accent-dim:   #c98aa3;
+  --accent-muted: #a87b8f;
+  --text:         #f3d9e3;
+  --text-sub:     #a87b8f;
+  --text-label:   #c98aa3;
+  --gold:         #c8a96a;
+
+  --radius-card:  16px;
+  --radius-btn:   12px;
+  /* Pills, badges and header buttons alias the input radius so they always
+     match the tappable option chips next to them. Change it in one place. */
+  --radius-pill:  var(--radius-input);
+  --radius-input: 10px;
+
+  --font-body:    'Poppins', system-ui, sans-serif;
+  --font-heading: 'Cinzel', serif;
+}
+
+/* ─── Base reset ───────────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Nav ──────────────────────────────────────────────────────────────────── */
+
+.main-nav {
+  display: flex;
+  gap: 6px;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 10px 10px 0;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.main-nav-btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  padding: 8px 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-sub);
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.main-nav-btn:hover {
+  color: var(--text);
+  border-color: var(--accent-dim);
+}
+
+.main-nav-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.main-nav-icon-btn {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-sub);
+  cursor: pointer;
+}
+
+/* ─── Settings sheet (palette picker) ──────────────────────────────────────── */
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 200;
+}
+
+.settings-panel {
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  padding: 1.5rem 1.25rem 2rem;
+}
+
+.palette-swatch-row {
+  display: flex;
+  gap: 10px;
+}
+
+.palette-swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.palette-swatch-active {
+  border-color: var(--text);
+}
+
+.settings-close {
+  width: 100%;
+  margin-top: 1.5rem;
+}
+
+/* ─── Shared tab wrapper ───────────────────────────────────────────────────── */
+
+.tab-page {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+/* ─── Shared page header ───────────────────────────────────────────────────── */
+
+.page-title {
+  font-family: var(--font-heading);
+  font-style: italic;
+  font-size: 1.5rem;
+  color: var(--accent);
+  margin: 0 0 4px;
+}
+
+.page-sub {
+  font-size: 0.8rem;
+  color: var(--text-sub);
+  font-style: italic;
+}
+
+/* ─── Shared card ──────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 1rem;
+  margin-bottom: 10px;
+}
+
+/* ─── Shared section label ─────────────────────────────────────────────────── */
+
+.section-label {
+  font-size: 0.65rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-label);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+/* ─── Shared input ─────────────────────────────────────────────────────────── */
+
+.input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  font-size: 14px;
+  color: var(--text);
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input:focus {
+  border-color: var(--accent-dim);
+}
+
+.input::placeholder {
+  color: var(--accent-muted);
+  opacity: 0.5;
+}
+
+/* ─── Shared buttons ───────────────────────────────────────────────────────── */
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-btn);
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: opacity 0.15s;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  color: var(--text-sub);
+  padding: 10px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-ghost:hover {
+  border-color: var(--accent-dim);
+  color: var(--text);
+}
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid #5c2a3a;
+  border-radius: var(--radius-btn);
+  color: #d4537e;
+  padding: 10px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+
+/* ─── Shared progress bar ──────────────────────────────────────────────────── */
+
+.progress-track {
+  height: 8px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--gold));
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+/* ─── Shared pill chip ─────────────────────────────────────────────────────── */
+
+.pill {
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-sub);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.pill:hover {
+  border-color: var(--accent-dim);
+  color: var(--text);
+}
+
+.pill-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+/* ─── Loading / error states ───────────────────────────────────────────────── */
+
+.loading-state,
+.error-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-label);
+  font-size: 14px;
+}
+
+.error-state { color: #d4537e; }
+
+/* ─── Select ───────────────────────────────────────────────────────────────── */
+
+select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 8px 10px;
+  outline: none;
+}
