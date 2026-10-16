@@ -11,6 +11,8 @@ export default function HabitRow({
   done,
   entries, // today's entries for THIS habit, oldest first
   recent, // the 3 most recent different amounts ever logged, newest first
+  streak, // number of days, or null for open habits
+  periodLine, // e.g. 'streak 5 · 18 days this month', or null
   editMode,
   canMoveUp,
   canMoveDown,
@@ -102,8 +104,12 @@ export default function HabitRow({
           )}
           <span className="habit-emoji">{habit.emoji}</span>
           <div>
-            <p className="habit-name">{habit.name}</p>
+            <p className="habit-name">
+              {habit.name}
+              {!editMode && streak > 0 && <span className="streak-badge">🔥 {streak}</span>}
+            </p>
             {text && <p className="habit-sub">{text}</p>}
+            {!editMode && periodLine && <p className="habit-sub">{periodLine}</p>}
             {editSummary && <p className="habit-sub">{editSummary}</p>}
             {isOpen && !editMode && <p className="habit-sub">log only</p>}
             {!habit.active && editMode && <p className="habit-sub">inactive</p>}

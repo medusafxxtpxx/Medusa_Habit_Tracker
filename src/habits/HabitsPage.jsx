@@ -2,10 +2,12 @@
 // The daily screen: habits grouped by section, tick to complete, edit mode for
 // adding / editing / reordering.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { getTodayDateString, isHabitDueToday } from '../dateUtils'
+import { getTodayDateString, isHabitDueToday, isStreakOverrideBroken } from '../dateUtils'
 import { goalForDate } from '../lib/goals'
+import { recomputeDayStatus } from '../lib/completion'
+import { fetchCompletedDates, computeStreak, countDaysDone, buildPeriodLine } from '../lib/streaks'
 import HabitRow from './HabitRow'
 import HabitEditForm from './HabitEditForm'
 import './habits.css'
@@ -49,6 +51,8 @@ export default function HabitsPage() {
   const [doneMap, setDoneMap] = useState({}) // habit_id -> completed today
   const [entries, setEntries] = useState([]) // every entry logged today
   const [recent, setRecent] = useState({}) // habit_id -> 3 most recent different amounts
+  const [completedMap, setCompletedMap] = useState({}) // habit_id -> Set of completed dates
+  const prevGroupDone = useRef(null) // which groups were fully done last time
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [editMode, setEditMode] = useState(false)
@@ -67,19 +71,41 @@ export default function HabitsPage() {
 
   async function load() {
     const today = getTodayDateString()
-    const [h, g, d, e, r] = await Promise.all([
+    const [h, g, d, e, r, c] = await Promise.all([
       supabase.from('habits').select('*').order('order_index'),
       supabase.from('habit_goals').select('*'),
       supabase.from('day_status').select('habit_id, completed').eq('log_date', today),
       supabase.from('entries').select('*').eq('log_date', today).order('entry_time').order('created_at'),
       supabase.from('entries').select('habit_id, value').order('created_at', { ascending: false }).limit(500),
+      fetchCompletedDates(),
     ])
-    const failed = h.error || g.error || d.error || e.error || r.error
+    const failed = h.error || g.error || d.error || e.error || r.error || c.error
     if (failed) {
       setError(failed.message)
     } else {
       setError('')
+      // A backdated streak lets go the first time a due day is missed after it was set.
+      const stale = h.data.filter(
+        (x) =>
+          x.streak_start_date &&
+          isStreakOverrideBroken(x, x.streak_override_set_date, c.map[x.id] || new Set(), today),
+      )
+      if (stale.length) {
+        await Promise.all(
+          stale.map((x) =>
+            supabase
+              .from('habits')
+              .update({ streak_start_date: null, streak_override_set_date: null })
+              .eq('id', x.id),
+          ),
+        )
+        stale.forEach((x) => {
+          x.streak_start_date = null
+          x.streak_override_set_date = null
+        })
+      }
       setHabits(h.data)
+      setCompletedMap(c.map)
       setGoals(g.data)
       setDoneMap(Object.fromEntries(d.data.map((r) => [r.habit_id, r.completed])))
       setEntries(e.data)
@@ -92,8 +118,46 @@ export default function HabitsPage() {
     load()
   }, [])
 
-  const goalOf = (habit) =>
-    goalForDate(goals.filter((g) => g.habit_id === habit.id), getTodayDateString())
+  const todayStr = getTodayDateString()
+  const goalOf = (habit) => goalForDate(goals.filter((g) => g.habit_id === habit.id), todayStr)
+
+  // Completed dates for streaks: the saved history, with today taken from the
+  // live tick state so the streak updates the instant you tick.
+  function datesFor(habit) {
+    const set = new Set(completedMap[habit.id] || [])
+    if (doneMap[habit.id]) set.add(todayStr)
+    else set.delete(todayStr)
+    return set
+  }
+
+  function streakInfo(habit) {
+    if (habit.completion_rule === 'open') return { streak: null, periodLine: null }
+    const dates = datesFor(habit)
+    const streak = computeStreak(habit, dates, todayStr)
+    const periodLine =
+      habit.show_period === 'none'
+        ? null
+        : buildPeriodLine(habit, streak, countDaysDone(habit, dates, habit.show_period, todayStr))
+    return { streak, periodLine }
+  }
+
+  // A group folds itself up the moment it BECOMES fully done (ticked by hand or
+  // completed by the rules), but not just because it already was when you opened the page.
+  useEffect(() => {
+    if (loading || editMode) return
+    const due = habits.filter((h) => h.active && isHabitDueToday(h) && counts(h))
+    const sections = [...new Set(due.map((h) => h.section))]
+    const nowDone = {}
+    sections.forEach((sec) => {
+      nowDone[sec] = due.filter((h) => h.section === sec).every((h) => doneMap[h.id])
+    })
+    const prev = prevGroupDone.current
+    if (prev) {
+      const newlyDone = sections.filter((sec) => nowDone[sec] && prev[sec] === false)
+      if (newlyDone.length) setCollapsed((c) => [...new Set([...c, ...newlyDone])])
+    }
+    prevGroupDone.current = nowDone
+  }, [habits, doneMap, editMode, loading])
 
   // Normal mode: active habits due today. Edit mode: everything.
   const visible = editMode ? habits : habits.filter((h) => h.active && isHabitDueToday(h))
@@ -115,15 +179,23 @@ export default function HabitsPage() {
       return
     }
     setError('')
+  }
 
-    // A group collapses by itself when its last habit gets done.
-    if (next) {
-      const mates = visible.filter((h) => h.section === habit.section && counts(h))
-      const allDone = mates.every((h) => (h.id === habit.id ? true : doneMap[h.id]))
-      if (allDone && !collapsed.includes(habit.section)) {
-        setCollapsed((prev) => [...prev, habit.section])
-      }
-    }
+  // ─── Completion rules (any entry / hits the goal) ──────────────────────────
+  async function refreshDone() {
+    const { data, error: err } = await supabase
+      .from('day_status')
+      .select('habit_id, completed')
+      .eq('log_date', getTodayDateString())
+    if (err) setError(`could not load ticks: ${err.message}`)
+    else setDoneMap(Object.fromEntries(data.map((r) => [r.habit_id, r.completed])))
+  }
+
+  // After any entry change: re-run the habit's rule for today, then reload the ticks.
+  async function syncCompletion(habitId) {
+    const { error: err } = await recomputeDayStatus(habitId, getTodayDateString())
+    if (err) setError(`could not update completion: ${err.message}`)
+    await refreshDone()
   }
 
   // ─── Logging amounts (number + add_up habits) ──────────────────────────────
@@ -157,13 +229,16 @@ export default function HabitsPage() {
     if (err) setError(`could not save: ${err.message}`)
     else setError('')
     await refreshEntries()
+    await syncCompletion(habit.id)
   }
 
   async function removeEntry(entryId) {
+    const entry = entries.find((x) => x.id === entryId)
     const { error: err } = await supabase.from('entries').delete().eq('id', entryId)
     if (err) setError(`could not remove: ${err.message}`)
     else setError('')
     await refreshEntries()
+    if (entry) await syncCompletion(entry.habit_id)
   }
 
   // number: one value per day. Update the existing entry (so a failed save can't
@@ -175,6 +250,7 @@ export default function HabitsPage() {
     if (err) setError(`could not save: ${err.message}`)
     else setError('')
     await refreshEntries()
+    await syncCompletion(habit.id)
   }
 
   // Swap within a section, then renumber EVERY habit 0..n so ties can't happen.
@@ -262,6 +338,7 @@ export default function HabitsPage() {
                   done={!!doneMap[habit.id]}
                   entries={entries.filter((x) => x.habit_id === habit.id)}
                   recent={recent[habit.id] || []}
+                  {...streakInfo(habit)}
                   editMode={editMode}
                   canMoveUp={idx > 0}
                   canMoveDown={idx < group.items.length - 1}
@@ -284,9 +361,14 @@ export default function HabitsPage() {
           sections={[...new Set(habits.map((h) => h.section))]}
           nextOrder={nextOrder}
           onClose={() => setEditing(null)}
-          onSaved={() => {
+          onSaved={async (habitId) => {
             setEditing(null)
-            load()
+            // A changed rule or goal can change today's completion. Past days stay as they were.
+            if (habitId) {
+              const { error: err } = await recomputeDayStatus(habitId, getTodayDateString())
+              if (err) setError(`could not update completion: ${err.message}`)
+            }
+            await load()
           }}
         />
       )}

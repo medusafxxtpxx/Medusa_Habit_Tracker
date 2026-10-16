@@ -201,7 +201,7 @@ export default function HabitEditForm({ habit, goalRows, sections, nextOrder, on
       }
     }
     setSaving(false)
-    onSaved()
+    onSaved(habitId) // the page re-runs today's completion rule for this habit
   }
 
   async function remove() {
