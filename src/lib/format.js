@@ -45,7 +45,23 @@ export function formatTime(timeStr) {
 
 // What to type in the amount box (the box always takes hours or seconds for those formats).
 export function inputPlaceholder(habit) {
-  if (habit.unit_format === 'h_m') return 'hours, e.g. 7.5'
-  if (habit.unit_format === 'm_s') return 'seconds, e.g. 90'
+  if (habit.unit_format === 'h_m') return 'hours, e.g. 7.5 or 7:30'
+  if (habit.unit_format === 'm_s') return 'seconds, e.g. 90 or 1:30'
   return habit.unit || 'amount'
+}
+
+// Minutes since midnight -> '12:30 pm' / '12 pm'. Wraps past 24h (a 1am entry plotted as 25h shows as 1 am).
+export function formatClock(totalMinutes) {
+  const m = Math.round(totalMinutes) % 1440
+  const hh = Math.floor(m / 60)
+  const mm = m % 60
+  const suffix = hh >= 12 ? 'pm' : 'am'
+  const h12 = hh % 12 === 0 ? 12 : hh % 12
+  return mm === 0 ? `${h12} ${suffix}` : `${h12}:${String(mm).padStart(2, '0')} ${suffix}`
+}
+
+// Minutes since midnight -> 'HH:MM' for a time input box (wraps past 24h: 25:00 -> 01:00).
+export function minutesToTimeInput(totalMinutes) {
+  const m = Math.round(totalMinutes) % 1440
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 }

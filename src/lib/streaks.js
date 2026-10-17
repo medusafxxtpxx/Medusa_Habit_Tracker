@@ -85,3 +85,60 @@ export function buildPeriodLine(habit, streak, daysDone) {
   parts.push(`${daysDone} ${daysDone === 1 ? 'day' : 'days'} ${PERIOD_TEXT[habit.show_period]}`)
   return parts.join(' · ')
 }
+
+// Every entry since a date, grouped as { habit_id: { 'YYYY-MM-DD': [values in the order logged] } },
+// plus timesByHabit in the same shape holding each entry's 'HH:MM:SS' (for log-time habits).
+// Paged for the same reason as fetchCompletedDates (1000-row limit), with a full
+// sort so no page can skip or repeat a row.
+export async function fetchEntriesSince(sinceStr) {
+  const byHabit = {}
+  const timesByHabit = {}
+  let from = 0
+  for (;;) {
+    const { data, error } = await supabase
+      .from('entries')
+      .select('habit_id, log_date, entry_time, value')
+      .gte('log_date', sinceStr)
+      .order('log_date')
+      .order('entry_time')
+      .order('created_at')
+      .order('id')
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) return { error, byHabit: {}, timesByHabit: {} }
+    data.forEach((row) => {
+      if (!byHabit[row.habit_id]) byHabit[row.habit_id] = {}
+      if (!byHabit[row.habit_id][row.log_date]) byHabit[row.habit_id][row.log_date] = []
+      byHabit[row.habit_id][row.log_date].push(Number(row.value))
+      if (!timesByHabit[row.habit_id]) timesByHabit[row.habit_id] = {}
+      if (!timesByHabit[row.habit_id][row.log_date]) timesByHabit[row.habit_id][row.log_date] = []
+      timesByHabit[row.habit_id][row.log_date].push(row.entry_time)
+    })
+    if (data.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return { error: null, byHabit, timesByHabit }
+}
+
+// Longest run of consecutive DUE days completed, ever. Today not done yet
+// doesn't count as a miss.
+export function bestStreak(habit, completedDates, todayStr) {
+  if (completedDates.size === 0) return 0
+  const first = [...completedDates].sort()[0]
+  const cursor = new Date(first + 'T00:00:00')
+  const end = new Date(todayStr + 'T00:00:00')
+  let run = 0
+  let best = 0
+  while (cursor <= end) {
+    const dateStr = toDateString(cursor)
+    if (isHabitDueOnDate(habit, cursor)) {
+      if (completedDates.has(dateStr)) {
+        run++
+        if (run > best) best = run
+      } else if (dateStr !== todayStr) {
+        run = 0
+      }
+    }
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return best
+}

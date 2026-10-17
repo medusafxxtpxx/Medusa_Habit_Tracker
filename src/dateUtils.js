@@ -26,6 +26,13 @@ export function getTodayDateString() {
   return toDateString(getEffectiveNow())
 }
 
+// 'YYYY-MM-DD' shifted by a number of days (negative = earlier).
+export function shiftDateString(dateStr, deltaDays) {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + deltaDays)
+  return toDateString(d)
+}
+
 // Reads habit.schedule_type ('daily' | 'specific_days') and habit.schedule_days.
 export function isHabitDueOnDate(habit, date) {
   if (habit.schedule_type === 'daily') return true

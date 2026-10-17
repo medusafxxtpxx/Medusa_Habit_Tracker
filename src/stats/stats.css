@@ -1,0 +1,53 @@
+/* src/stats/stats.css */
+/* Stats page. Option chips (.chip) and the mini buttons come from habits.css. */
+
+.stats-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.stats-title { font-size: 14px; font-weight: 500; color: var(--text); }
+.stats-head-right { display: flex; align-items: center; gap: 8px; }
+.stats-sub { font-size: 11px; color: var(--text-sub); }
+.stats-empty { margin-top: 6px; text-align: center; }
+.stats-range { margin: 10px 0; }
+.stats-add { margin-top: 8px; }
+
+.pill-edit { display: inline-flex; align-items: center; gap: 2px; }
+.mini-btn {
+  background: none;
+  border: none;
+  color: var(--text-sub);
+  font-size: 14px;
+  padding: 0 3px;
+  cursor: pointer;
+}
+.mini-btn:disabled { opacity: 0.25; cursor: default; }
+
+.tile-row { display: flex; gap: 8px; margin-top: 10px; }
+.tile {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-deep);
+  border-radius: var(--radius-input);
+  padding: 8px 10px;
+}
+.tile-label { font-size: 11px; color: var(--text-sub); margin-bottom: 3px; }
+.tile-value { font-size: 14px; font-weight: 500; color: var(--text); }
+
+.done-grid { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.sq {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-sub);
+}
+.sq-done { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.sq-off { opacity: 0.4; }

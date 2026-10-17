@@ -7,12 +7,14 @@ import { supabase } from '../supabaseClient'
 import { getTodayDateString, isHabitDueToday, isStreakOverrideBroken } from '../dateUtils'
 import { goalForDate } from '../lib/goals'
 import { recomputeDayStatus } from '../lib/completion'
+import { useAutoRefresh } from '../lib/useAutoRefresh'
 import { fetchCompletedDates, computeStreak, countDaysDone, buildPeriodLine } from '../lib/streaks'
 import HabitRow from './HabitRow'
 import HabitEditForm from './HabitEditForm'
 import './habits.css'
 
 const COLLAPSE_KEY = 'habit-collapsed-sections'
+const FOLD_KEY = 'habit-folded-rows'
 
 // From the latest logged entries (newest first), the 3 most recent DIFFERENT
 // amounts per habit, so they can be re-added with one tap, even on a new day.
@@ -57,20 +59,49 @@ export default function HabitsPage() {
   const [error, setError] = useState('')
   const [editMode, setEditMode] = useState(false)
   const [editing, setEditing] = useState(null) // null | { habit: object | null }
+  // Which groups are folded. Remembered, but only for today: every morning starts fully
+  // open, and groups fold up as you finish them.
+  const collapsedDay = useRef(getTodayDateString())
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]')
+      const saved = JSON.parse(localStorage.getItem(COLLAPSE_KEY) || 'null')
+      return saved && saved.day === getTodayDateString() ? saved.sections : []
     } catch {
       return []
     }
   })
 
   useEffect(() => {
-    localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed))
+    localStorage.setItem(COLLAPSE_KEY, JSON.stringify({ day: collapsedDay.current, sections: collapsed }))
   }, [collapsed])
+
+  // Habits whose logging area is folded away (remembered on this device, by habit id).
+  const [folded, setFolded] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(FOLD_KEY) || '[]')
+    } catch {
+      return []
+    }
+  })
+
+  useEffect(() => {
+    localStorage.setItem(FOLD_KEY, JSON.stringify(folded))
+  }, [folded])
+
+  function toggleFolded(habitId) {
+    setFolded((prev) =>
+      prev.includes(habitId) ? prev.filter((id) => id !== habitId) : [...prev, habitId],
+    )
+  }
 
   async function load() {
     const today = getTodayDateString()
+    if (collapsedDay.current !== today) {
+      // A new day: start with every group open again.
+      collapsedDay.current = today
+      setCollapsed([])
+      prevGroupDone.current = null
+    }
     const [h, g, d, e, r, c] = await Promise.all([
       supabase.from('habits').select('*').order('order_index'),
       supabase.from('habit_goals').select('*'),
@@ -117,6 +148,8 @@ export default function HabitsPage() {
   useEffect(() => {
     load()
   }, [])
+
+  useAutoRefresh(load) // new day or coming back to the app -> reload
 
   const todayStr = getTodayDateString()
   const goalOf = (habit) => goalForDate(goals.filter((g) => g.habit_id === habit.id), todayStr)
@@ -219,11 +252,11 @@ export default function HabitsPage() {
   }
 
   // add_up: every add is its own timestamped entry.
-  async function addEntry(habit, value) {
+  async function addEntry(habit, value, timeStr) {
     const { error: err } = await supabase.from('entries').insert({
       habit_id: habit.id,
       log_date: getTodayDateString(),
-      entry_time: new Date().toTimeString().slice(0, 8), // local 'HH:MM:SS'
+      entry_time: timeStr || new Date().toTimeString().slice(0, 8), // a chosen time, or now (local 'HH:MM:SS')
       value,
     })
     if (err) setError(`could not save: ${err.message}`)
@@ -262,7 +295,23 @@ export default function HabitsPage() {
     if (j < 0 || j >= group.items.length) return
     ;[group.items[i], group.items[j]] = [group.items[j], group.items[i]]
 
-    const changed = all
+    await saveOrder(all)
+  }
+
+  // Move a whole group up or down among the groups (its habits travel with it).
+  async function moveGroup(section, dir) {
+    const all = groupBySection(habits)
+    const i = all.findIndex((g) => g.section === section)
+    const j = i + dir
+    if (j < 0 || j >= all.length) return
+    ;[all[i], all[j]] = [all[j], all[i]]
+    await saveOrder(all)
+  }
+
+  // Numbers every habit 0..n in the order of the given groups (only rows that changed
+  // are written), then reloads. Group order IS the order of their first habit.
+  async function saveOrder(orderedGroups) {
+    const changed = orderedGroups
       .flatMap((g) => g.items)
       .map((h, idx) => ({ id: h.id, order_index: idx, old: h.order_index }))
       .filter((x) => x.order_index !== x.old)
@@ -274,6 +323,16 @@ export default function HabitsPage() {
     )
     const bad = results.find((r) => r.error)
     if (bad) setError(`could not reorder: ${bad.error.message}`)
+    await load()
+  }
+
+  // Renames a group by giving all its habits the new name. If the name already exists, the two groups merge.
+  async function renameGroup(section) {
+    const name = (window.prompt('Rename this group:', section) || '').trim()
+    if (!name || name === section) return
+    const { error: err } = await supabase.from('habits').update({ section: name }).eq('section', section)
+    if (err) setError(`could not rename: ${err.message}`)
+    setCollapsed((prev) => prev.map((s) => (s === section ? name : s)))
     await load()
   }
 
@@ -315,19 +374,28 @@ export default function HabitsPage() {
         </p>
       )}
 
-      {groups.map((group) => {
+      {groups.map((group, gi) => {
         const groupCounted = group.items.filter(counts)
         const groupDone = groupCounted.filter((h) => doneMap[h.id]).length
         const isCollapsed = collapsed.includes(group.section) && !editMode
         return (
           <section key={group.section} className="habit-group">
-            <button className="group-head" onClick={() => toggleCollapsed(group.section)}>
-              <span className="section-label">{group.section}</span>
-              <span className="group-count">
-                {groupCounted.length > 0 && `${groupDone} of ${groupCounted.length} done `}
-                {isCollapsed ? '▸' : '▾'}
-              </span>
-            </button>
+            <div className="group-head-row">
+              <button className="group-head" onClick={() => toggleCollapsed(group.section)}>
+                <span className="section-label">{group.section}</span>
+                <span className="group-count">
+                  {groupCounted.length > 0 && `${groupDone} of ${groupCounted.length} done `}
+                  {isCollapsed ? '▸' : '▾'}
+                </span>
+              </button>
+              {editMode && (
+                <div className="habit-controls">
+                  <button className="icon-btn" onClick={() => renameGroup(group.section)} aria-label="rename group">✎</button>
+                  <button className="icon-btn" disabled={gi === 0} onClick={() => moveGroup(group.section, -1)} aria-label="move group up">↑</button>
+                  <button className="icon-btn" disabled={gi === groups.length - 1} onClick={() => moveGroup(group.section, 1)} aria-label="move group down">↓</button>
+                </div>
+              )}
+            </div>
 
             {!isCollapsed &&
               group.items.map((habit, idx) => (
@@ -339,13 +407,15 @@ export default function HabitsPage() {
                   entries={entries.filter((x) => x.habit_id === habit.id)}
                   recent={recent[habit.id] || []}
                   {...streakInfo(habit)}
+                  folded={folded.includes(habit.id)}
+                  onToggleFold={() => toggleFolded(habit.id)}
                   editMode={editMode}
                   canMoveUp={idx > 0}
                   canMoveDown={idx < group.items.length - 1}
                   onToggle={() => toggleDone(habit)}
                   onEdit={() => setEditing({ habit })}
                   onMove={(dir) => moveHabit(habit, dir)}
-                  onAddEntry={(value) => addEntry(habit, value)}
+                  onAddEntry={(value, timeStr) => addEntry(habit, value, timeStr)}
                   onRemoveEntry={removeEntry}
                   onSaveNumber={(value) => saveNumber(habit, value)}
                 />
@@ -357,6 +427,8 @@ export default function HabitsPage() {
       {editing && (
         <HabitEditForm
           habit={editing.habit}
+          templates={habits}
+          allGoals={goals}
           goalRows={editing.habit ? goals.filter((g) => g.habit_id === editing.habit.id) : []}
           sections={[...new Set(habits.map((h) => h.section))]}
           nextOrder={nextOrder}

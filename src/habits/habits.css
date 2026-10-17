@@ -30,6 +30,8 @@
   font-family: var(--font-body);
 }
 .group-head .section-label { margin-bottom: 0; }
+.group-head-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.group-head-row .group-head { flex: 1; margin-bottom: 0; }
 .group-count { font-size: 11px; color: var(--text-sub); }
 
 /* ─── Habit row ────────────────────────────────────────────────────────────── */

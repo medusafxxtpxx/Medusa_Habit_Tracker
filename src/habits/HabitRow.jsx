@@ -3,7 +3,7 @@
 // per-habit components.
 
 import { useState } from 'react'
-import { formatAmount, formatProgress, formatValue, formatTime, inputPlaceholder } from '../lib/format'
+import { formatAmount, formatProgress, formatValue, formatTime, formatClock, inputPlaceholder } from '../lib/format'
 
 export default function HabitRow({
   habit,
@@ -13,6 +13,8 @@ export default function HabitRow({
   recent, // the 3 most recent different amounts ever logged, newest first
   streak, // number of days, or null for open habits
   periodLine, // e.g. 'streak 5 · 18 days this month', or null
+  folded, // true = the logging area (chips, amount box, quick-picks) is hidden
+  onToggleFold,
   editMode,
   canMoveUp,
   canMoveDown,
@@ -25,12 +27,16 @@ export default function HabitRow({
 }) {
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
+  const [timeVal, setTimeVal] = useState('') // a chosen time for "log time" habits
 
   const isOpen = habit.completion_rule === 'open' // log only: no tick, no streak
   // Only a manual tick (or a checkbox habit) can be tapped. "Any entry" and
   // "hits the goal" habits will fill in by themselves in phase 2.
   const tappable = habit.input_type === 'checkbox' || habit.completion_rule === 'manual'
   const logs = habit.input_type === 'number' || habit.input_type === 'add_up'
+  // Hours and minutes boxes take plain text so you can type 7:30 (or 1:30 for min:sec) as well as 7.5.
+  const textEntry = habit.unit_format === 'h_m' || habit.unit_format === 'm_s'
+  const isTimeLog = habit.input_type === 'log_time' // records only WHEN
 
   const hasGoal = goal.direction !== 'none' && goal.value != null
   const goalNum = hasGoal ? Number(goal.value) : 0
@@ -40,6 +46,10 @@ export default function HabitRow({
   const recentChips = recent.filter((v) => !quickPicks.includes(v))
 
   function progressText() {
+    if (isTimeLog) {
+      const goalText = hasGoal ? `${goal.direction === 'at_most' ? 'by' : 'after'} ${formatClock(goalNum)}` : null
+      return [entries.length === 0 ? 'not logged yet' : null, goalText].filter(Boolean).join(' · ') || null
+    }
     if (habit.input_type === 'number' && entries.length === 0) {
       return hasGoal ? `not logged · goal ${formatAmount(goalNum, habit)}` : 'not logged'
     }
@@ -62,10 +72,24 @@ export default function HabitRow({
     }
   }
 
+  // '7.5' -> 7.5; with a colon: '7:30' -> 7.5 hours (hours:min), '1:30' -> 90 seconds (min:sec).
+  function readAmount(text) {
+    const t = text.trim()
+    if (t === '') return null
+    if (t.includes(':')) {
+      const [a, b] = t.split(':').map(Number)
+      if (Number.isNaN(a) || Number.isNaN(b) || a < 0 || b < 0 || b >= 60) return null
+      if (habit.unit_format === 'h_m') return a + b / 60
+      if (habit.unit_format === 'm_s') return a * 60 + b
+      return null
+    }
+    const n = Number(t)
+    return Number.isNaN(n) ? null : n
+  }
+
   function parsedAmount() {
-    if (amount.trim() === '') return null
-    const n = Number(amount)
-    if (Number.isNaN(n)) return null
+    const n = readAmount(amount)
+    if (n === null) return null
     if (habit.input_type === 'add_up' && n <= 0) return null
     if (n < 0) return null
     return n
@@ -81,10 +105,13 @@ export default function HabitRow({
     })
   }
 
-  const text = !editMode && logs ? progressText() : null
+  const text = !editMode && (logs || isTimeLog) ? progressText() : null
+  const goalWords = isTimeLog
+    ? goal.direction === 'at_most' ? 'no later than' : 'no earlier than'
+    : goal.direction === 'at_least' ? 'at least' : 'at most'
   const editSummary =
     editMode && hasGoal
-      ? `goal: ${goal.direction === 'at_least' ? 'at least' : 'at most'} ${formatAmount(goalNum, habit)}`
+      ? `goal: ${goalWords} ${isTimeLog ? formatClock(goalNum) : formatAmount(goalNum, habit)}`
       : null
   const barPct = hasGoal && goalNum > 0 ? Math.min(100, (total / goalNum) * 100) : 0
 
@@ -123,16 +150,28 @@ export default function HabitRow({
             <button className="icon-btn" onClick={onEdit} aria-label="edit habit">✎</button>
           </div>
         )}
+
+        {!editMode && (logs || isTimeLog) && (
+          <button
+            className="icon-btn"
+            onClick={onToggleFold}
+            aria-label={folded ? 'show logging' : 'hide logging'}
+            aria-expanded={!folded}
+          >
+            {folded ? '▸' : '▾'}
+          </button>
+        )}
       </div>
 
-      {!editMode && logs && (
-        <>
-          {hasGoal && goalNum > 0 && (
-            <div className="progress-track">
-              <div className="progress-fill" style={{ width: `${barPct}%` }} />
-            </div>
-          )}
+      {/* The progress bar stays visible when folded, so you still see how far along you are. */}
+      {!editMode && logs && hasGoal && goalNum > 0 && (
+        <div className="progress-track">
+          <div className="progress-fill" style={{ width: `${barPct}%` }} />
+        </div>
+      )}
 
+      {!editMode && logs && !folded && (
+        <>
           {habit.input_type === 'add_up' && entries.length > 0 && (
             <div className="chip-row log-chips">
               {entries.map((e) => (
@@ -154,10 +193,10 @@ export default function HabitRow({
           <div className="log-input-row">
             <input
               className="input"
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="any"
+              type={textEntry ? 'text' : 'number'}
+              inputMode={textEntry ? undefined : 'decimal'}
+              min={textEntry ? undefined : '0'}
+              step={textEntry ? undefined : 'any'}
               placeholder={inputPlaceholder(habit)}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
@@ -197,6 +236,52 @@ export default function HabitRow({
               ))}
             </div>
           )}
+        </>
+      )}
+      {!editMode && isTimeLog && !folded && (
+        <>
+          {entries.length > 0 && (
+            <div className="chip-row log-chips">
+              {entries.map((e) => (
+                <span key={e.id} className="entry-chip">
+                  {formatTime(e.entry_time)}
+                  <button
+                    className="entry-x"
+                    aria-label="remove this time"
+                    disabled={busy}
+                    onClick={() => run(() => onRemoveEntry(e.id))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="log-input-row">
+            <button className="btn-primary log-btn" disabled={busy} onClick={() => run(() => onAddEntry(1))}>
+              log now
+            </button>
+            <input
+              className="input"
+              type="time"
+              aria-label="log a different time"
+              value={timeVal}
+              onChange={(e) => setTimeVal(e.target.value)}
+            />
+            <button
+              className="btn-ghost log-btn"
+              disabled={busy || !timeVal}
+              onClick={() =>
+                run(async () => {
+                  await onAddEntry(1, timeVal.length === 5 ? `${timeVal}:00` : timeVal)
+                  setTimeVal('')
+                })
+              }
+            >
+              add
+            </button>
+          </div>
         </>
       )}
     </div>
